@@ -600,7 +600,9 @@ function setEstadoConexion(estado) {
 
 // ── PROCESAMIENTO DE EVENTOS ──────────────────────────
 function procesarEvento(datos) {
-  const uuid = datos.paciente_uuid;
+  const uuid = datos.ambulancia_id !== undefined
+    ? `ambulancia-${datos.ambulancia_id}`
+    : datos.paciente_uuid;
   if (!uuid) return;
 
   const uuidCorto = uuid.substring(0, 8).toUpperCase();

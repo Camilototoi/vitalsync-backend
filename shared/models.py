@@ -41,12 +41,13 @@ class EstadoRed(str, Enum):
 # ── MODELOS PRINCIPALES ───────────────────────────
 class RegistroClinico(BaseModel):
     id:                  UUID     = Field(default_factory=uuid4)
+    ambulancia_id:       int      = 0
     paciente_uuid:       UUID     = Field(default_factory=uuid4)
     timestamp:           datetime = Field(default_factory=datetime.utcnow)
     triage:              NivelTriage
     frecuencia_cardiaca: int
     presion_arterial:    str
-    imagen_ekg:          Optional[str] = None   # Base64, max 1MB
+    imagen_ekg:          Optional[str] = None
     estado:              EstadoRegistro = EstadoRegistro.PENDIENTE_SYNC
     cifrado_local:       bool = False
 
