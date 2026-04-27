@@ -1,4 +1,5 @@
 import asyncio
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from dotenv import load_dotenv
@@ -39,6 +40,7 @@ app = FastAPI(
 
 app.include_router(ingesta_router, prefix="/api/ingesta", tags=["Ingesta"])
 app.include_router(dashboard_router, prefix="/ws",        tags=["Dashboard"])
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 @app.get("/health", tags=["Sistema"])
 def health():
