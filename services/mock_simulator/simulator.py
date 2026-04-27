@@ -26,14 +26,14 @@ class Ambulancia:
         print(f"[Ambulancia {self.id}] 🏥 Paciente entregado — nuevo paciente asignado")
 
     def generar_registro(self) -> RegistroClinico:
-    return RegistroClinico(
-        ambulancia_id       = self.id,
-        paciente_uuid       = self.paciente_uuid,
-        triage              = self.triage,
-        frecuencia_cardiaca = random.randint(50, 130),
-        presion_arterial    = f"{random.randint(100,150)}/{random.randint(60,95)}",
-        imagen_ekg          = None
-    )
+        return RegistroClinico(
+            ambulancia_id       = self.id,
+            paciente_uuid       = self.paciente_uuid,
+            triage              = self.triage,
+            frecuencia_cardiaca = random.randint(50, 130),
+            presion_arterial    = f"{random.randint(100,150)}/{random.randint(60,95)}",
+            imagen_ekg          = None
+        )
 
 async def simular_ambulancia(ambulancia: Ambulancia):
     async with httpx.AsyncClient() as client:
