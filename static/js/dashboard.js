@@ -1,11 +1,17 @@
 // ── ESTADO ───────────────────────────────────────────
-const pacientes = new Map();
-let ws = null;
-let alertaTimeout = null;
+const ambulancias  = new Map(); // ambulancia_id → { uuid, triage, estado, ... }
+let ws             = null;
+let alertaTimeout  = null;
+
+// Contadores de turno
+let turnoAtendidos = 0;
+let turnoEntregas  = 0;
+let turnoRojos     = 0;
+let turnoEKG       = 0;
 
 // ── WEBSOCKET ─────────────────────────────────────────
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const WS_URL = `${protocol}//${window.location.host}/ws/vitales`;
+const WS_URL   = `${protocol}//${window.location.host}/ws/vitales`;
 
 function conectar() {
   setEstadoConexion('connecting');
@@ -13,7 +19,7 @@ function conectar() {
 
   ws.onopen = () => {
     setEstadoConexion('online');
-    console.log('[VitalSync] WebSocket conectado');
+    agregarFeed('Conexión establecida con el sistema', 'blue');
   };
 
   ws.onmessage = (event) => {
@@ -27,7 +33,7 @@ function conectar() {
 
   ws.onclose = () => {
     setEstadoConexion('offline');
-    console.log('[VitalSync] WebSocket desconectado — reintentando en 3s');
+    agregarFeed('Conexión perdida — reintentando...', 'gray');
     setTimeout(conectar, 3000);
   };
 
@@ -45,106 +51,200 @@ function setEstadoConexion(estado) {
   const textos = {
     online:     'EN LÍNEA',
     offline:    'SIN CONEXIÓN',
-    connecting: 'CONECTANDO...'
+    connecting: 'CONECTANDO'
   };
   label.textContent = textos[estado] || estado;
 }
 
 // ── PROCESAMIENTO DE EVENTOS ──────────────────────────
 function procesarEvento(datos) {
-  const uuid = datos.ambulancia_id !== undefined
-    ? `ambulancia-${datos.ambulancia_id}`
-    : datos.paciente_uuid;
-  if (!uuid) return;
+  const ambId = datos.ambulancia_id;
+  if (ambId === undefined) return;
 
-  const uuidCorto = uuid.substring(0, 8).toUpperCase();
-  const triage    = datos.triage || 'VERDE';
-  const fc        = datos.frecuencia_cardiaca ?? '--';
-  const pa        = datos.presion_arterial    ?? '--';
-  const ts        = new Date().toLocaleTimeString('es-CO', { hour12: false });
+  const uuid     = datos.paciente_uuid;
+  const triage   = normalizarTriage(datos.triage || 'VERDE');
+  const fc       = datos.frecuencia_cardiaca ?? '--';
+  const pa       = datos.presion_arterial    ?? '--';
+  const tieneEKG = !!datos.imagen_ekg;
+  const ts       = new Date().toLocaleTimeString('es-CO', { hour12: false });
 
-  const esNuevo = !pacientes.has(uuid);
+  const previo     = ambulancias.get(ambId);
+  const esNuevo    = !previo;
+  const cambioUUID = previo && previo.uuid !== uuid;
+
+  // Si el triage cambió de ROJO a otro, quitar del banner
+  if (previo && previo.triage === 'ROJO' && triage !== 'ROJO') {
+    quitarRojo(ambId);
+  }
 
   if (esNuevo) {
-    crearCard(uuid, uuidCorto, triage, fc, pa, ts);
+    turnoAtendidos++;
+    ambulancias.set(ambId, { uuid, triage, fc, pa, ts, estado: 'nuevo-paciente' });
+    crearCard(ambId, uuid, triage, fc, pa, ts, tieneEKG);
+    agregarFeed(`Ambulancia ${ambId} — nuevo paciente asignado`, colorFeed(triage));
+
+  } else if (cambioUUID) {
+    ambulancias.set(ambId, { uuid: previo.uuid, triage: previo.triage, fc: previo.fc, pa: previo.pa, ts, estado: 'entregando' });
+    actualizarEstadoBadge(ambId, 'entregando');
+    agregarFeed(`Ambulancia ${ambId} — llegando al hospital`, 'amarillo');
+    turnoEntregas++;
+
+    setTimeout(() => {
+      turnoAtendidos++;
+      ambulancias.set(ambId, { uuid, triage, fc, pa, ts, estado: 'nuevo-paciente' });
+      actualizarCard(ambId, uuid, triage, fc, pa, ts, tieneEKG, 'nuevo-paciente');
+      agregarFeed(`Ambulancia ${ambId} — paciente entregado ✓`, 'verde');
+      agregarFeed(`Ambulancia ${ambId} — nuevo paciente asignado`, colorFeed(triage));
+
+      setTimeout(() => {
+        const actual = ambulancias.get(ambId);
+        if (actual && actual.uuid === uuid) {
+          actual.estado = 'en-ruta';
+          ambulancias.set(ambId, actual);
+          actualizarEstadoBadge(ambId, 'en-ruta');
+        }
+      }, 8000);
+    }, 3000);
+
   } else {
-    actualizarCard(uuid, uuidCorto, triage, fc, pa, ts);
+    const estado = previo.estado === 'nuevo-paciente' ? 'nuevo-paciente' : 'en-ruta';
+    ambulancias.set(ambId, { uuid, triage, fc, pa, ts, estado });
+    actualizarCard(ambId, uuid, triage, fc, pa, ts, tieneEKG, estado);
   }
 
-  pacientes.set(uuid, { triage, fc, pa, ts });
-  reordenarGrid();
-  actualizarContadores();
-  actualizarLastUpdate(ts);
+  if (tieneEKG) {
+    turnoEKG++;
+    actualizarTurno();
+  }
 
   if (triage === 'ROJO') {
-    mostrarAlertaRojo(uuidCorto);
+    turnoRojos++;
+    mostrarAlertaRojo(ambId, ts);
     reproducirAlerta();
+    agregarFeed(`⚠ Ambulancia ${ambId} — Triage ROJO detectado`, 'rojo');
   }
 
+  reordenarGrid();
+  actualizarContadores();
+  actualizarTurno();
+  actualizarLastUpdate(ts);
   ocultarEmptyState();
 }
 
 // ── CREAR CARD ────────────────────────────────────────
-function crearCard(uuid, uuidCorto, triage, fc, pa, ts) {
+function crearCard(ambId, uuid, triage, fc, pa, ts, tieneEKG) {
   const card = document.createElement('div');
   card.className = `card ${triage}`;
-  card.id        = `card-${uuid}`;
-  card.innerHTML = buildCardHTML(uuidCorto, triage, fc, pa, ts);
+  card.id        = `card-amb-${ambId}`;
+  card.innerHTML = buildCardHTML(ambId, uuid, triage, fc, pa, ts, tieneEKG, 'nuevo-paciente');
   document.getElementById('grid').appendChild(card);
-  pacientes.set(uuid, { triage, fc, pa, ts, card });
+
+  // Cambiar a en-ruta después de 8 segundos
+  setTimeout(() => {
+    const actual = ambulancias.get(ambId);
+    if (actual) {
+      actual.estado = 'en-ruta';
+      ambulancias.set(ambId, actual);
+      actualizarEstadoBadge(ambId, 'en-ruta');
+    }
+  }, 8000);
 }
 
 // ── ACTUALIZAR CARD ───────────────────────────────────
-function actualizarCard(uuid, uuidCorto, triage, fc, pa, ts) {
-  const card = document.getElementById(`card-${uuid}`);
+function actualizarCard(ambId, uuid, triage, fc, pa, ts, tieneEKG, estado) {
+  const card = document.getElementById(`card-amb-${ambId}`);
   if (!card) return;
 
-  const prevTriage = pacientes.get(uuid)?.triage;
+  const previo = ambulancias.get(ambId);
 
-  if (prevTriage !== triage) {
+  // Actualizar clase triage si cambió
+  if (!card.classList.contains(triage)) {
     card.className = `card ${triage}`;
   }
 
-  const fcEl    = card.querySelector('.vital-fc');
-  const paEl    = card.querySelector('.vital-pa');
-  const tsEl    = card.querySelector('.card-timestamp');
+  // Actualizar UUID discreto
+  const uuidEl = card.querySelector('.paciente-uuid');
+  if (uuidEl) uuidEl.textContent = uuid ? uuid.substring(0, 12) + '...' : '';
+
+  // Actualizar badge de triage
   const badgeEl = card.querySelector('.triage-badge');
-
-  if (fcEl) {
-    fcEl.textContent = fc;
-    fcEl.className   = `vital-value hr-${getHRClass(fc)} vital-fc`;
-    fcEl.closest('.vital-block').classList.remove('updated');
-    void fcEl.closest('.vital-block').offsetWidth;
-    fcEl.closest('.vital-block').classList.add('updated');
-  }
-
-  if (paEl) {
-    paEl.textContent = pa;
-    paEl.closest('.vital-block').classList.remove('updated');
-    void paEl.closest('.vital-block').offsetWidth;
-    paEl.closest('.vital-block').classList.add('updated');
-  }
-
-  if (tsEl)    tsEl.textContent = ts;
   if (badgeEl) {
     badgeEl.className   = `triage-badge ${triage}`;
     badgeEl.textContent = triage;
   }
 
+  // Actualizar estado
+  const estadoEl = card.querySelector('.estado-badge');
+  if (estadoEl) {
+    estadoEl.className   = `estado-badge ${estado}`;
+    estadoEl.textContent = textoEstado(estado);
+  }
+
+  // Actualizar vitales con flash
+  const fcEl = card.querySelector('.vital-fc');
+  const paEl = card.querySelector('.vital-pa');
+  const tsEl = card.querySelector('.card-timestamp');
+
+  if (fcEl) {
+    fcEl.textContent = fc;
+    fcEl.className   = `vital-value hr-${getHRClass(fc)} vital-fc`;
+    flashBlock(fcEl);
+  }
+
+  if (paEl) {
+    paEl.textContent = pa;
+    flashBlock(paEl);
+  }
+
+  if (tsEl) tsEl.textContent = ts;
+
+  // EKG indicator
+  const ekgEl = card.querySelector('.ekg-indicator');
+  if (ekgEl) {
+    ekgEl.className   = `ekg-indicator${tieneEKG ? ' tiene-ekg' : ''}`;
+    ekgEl.textContent = tieneEKG ? 'EKG ✓' : '';
+  }
+
+  // Heartbeat
   const hbPath = card.querySelector('.hb-path');
   if (hbPath) hbPath.setAttribute('d', generarECG());
 }
 
+function flashBlock(el) {
+  const block = el.closest('.vital-block');
+  if (!block) return;
+  block.classList.remove('updated');
+  void block.offsetWidth;
+  block.classList.add('updated');
+}
+
+function actualizarEstadoBadge(ambId, estado) {
+  const card = document.getElementById(`card-amb-${ambId}`);
+  if (!card) return;
+  const estadoEl = card.querySelector('.estado-badge');
+  if (!estadoEl) return;
+  estadoEl.className   = `estado-badge ${estado}`;
+  estadoEl.textContent = textoEstado(estado);
+}
+
 // ── BUILD CARD HTML ───────────────────────────────────
-function buildCardHTML(uuidCorto, triage, fc, pa, ts) {
-  const hrClass = getHRClass(fc);
+function buildCardHTML(ambId, uuid, triage, fc, pa, ts, tieneEKG, estado) {
+  const hrClass  = getHRClass(fc);
+  const uuidCorto = uuid ? uuid.substring(0, 12) + '...' : '—';
   return `
     <div class="card-stripe"></div>
     <div class="card-body">
-      <div class="card-header">
-        <div class="patient-id">AMBULANCIA <span>${uuidCorto}...</span></div>
-        <div class="triage-badge ${triage}">${triage}</div>
+      <div class="card-top">
+        <div class="ambulancia-info">
+          <div class="ambulancia-label">Ambulancia</div>
+          <div class="ambulancia-num">${String(ambId).padStart(2, '0')}</div>
+        </div>
+        <div class="card-right">
+          <div class="triage-badge ${triage}">${triage}</div>
+          <div class="estado-badge ${estado}">${textoEstado(estado)}</div>
+        </div>
       </div>
+      <div class="paciente-uuid">${uuidCorto}</div>
       <div class="vitals">
         <div class="vital-block">
           <div class="vital-label">Frec. Cardíaca</div>
@@ -156,19 +256,66 @@ function buildCardHTML(uuidCorto, triage, fc, pa, ts) {
         </div>
       </div>
       <div class="heartbeat-wrap">
-        <svg class="heartbeat-svg" viewBox="0 0 300 28" preserveAspectRatio="none">
+        <svg class="heartbeat-svg" viewBox="0 0 300 24" preserveAspectRatio="none">
           <path class="hb-path" d="${generarECG()}"/>
         </svg>
       </div>
       <div class="card-footer">
         <span class="card-timestamp">${ts}</span>
-        <span class="card-estado">ACTIVO</span>
+        <span class="ekg-indicator${tieneEKG ? ' tiene-ekg' : ''}">${tieneEKG ? 'EKG ✓' : ''}</span>
       </div>
     </div>
   `;
 }
 
+// ── ACTIVITY FEED ─────────────────────────────────────
+const MAX_FEED = 40;
+
+function agregarFeed(msg, tipo) {
+  const feed = document.getElementById('activity-feed');
+  const ts   = new Date().toLocaleTimeString('es-CO', { hour12: false });
+
+  const item = document.createElement('div');
+  item.className = 'feed-item';
+  item.innerHTML = `
+    <div class="feed-dot ${tipo}"></div>
+    <div class="feed-content">
+      <div class="feed-msg">${msg}</div>
+      <div class="feed-time">${ts}</div>
+    </div>
+  `;
+
+  feed.insertBefore(item, feed.firstChild);
+
+  // Limitar cantidad de items
+  while (feed.children.length > MAX_FEED) {
+    feed.removeChild(feed.lastChild);
+  }
+}
+
 // ── HELPERS ────────────────────────────────────────────
+function normalizarTriage(t) {
+  const s = String(t).toUpperCase();
+  if (s.includes('ROJO'))     return 'ROJO';
+  if (s.includes('AMARILLO')) return 'AMARILLO';
+  return 'VERDE';
+}
+
+function colorFeed(triage) {
+  if (triage === 'ROJO')     return 'rojo';
+  if (triage === 'AMARILLO') return 'amarillo';
+  return 'verde';
+}
+
+function textoEstado(estado) {
+  const textos = {
+    'nuevo-paciente': 'Nuevo paciente',
+    'en-ruta':        'En ruta',
+    'entregando':     'Llegando al hospital'
+  };
+  return textos[estado] || 'En ruta';
+}
+
 function getHRClass(fc) {
   const v = parseInt(fc);
   if (isNaN(v)) return '';
@@ -179,17 +326,17 @@ function getHRClass(fc) {
 
 function generarECG() {
   const pts = [
-    [0,14],[30,14],[40,14],[45,10],[50,14],
-    [60,14],[65,4],[70,22],[75,2],[80,14],
-    [90,14],[95,11],[100,14],
-    [130,14],[135,10],[140,14],
-    [150,14],[155,4],[160,22],[165,2],[170,14],
-    [180,14],[185,11],[190,14],
-    [220,14],[225,10],[230,14],
-    [240,14],[245,4],[250,22],[255,2],[260,14],
-    [280,14],[300,14]
+    [0,12],[30,12],[40,12],[45,8],[50,12],
+    [60,12],[65,2],[70,20],[75,1],[80,12],
+    [90,12],[95,9],[100,12],
+    [130,12],[135,8],[140,12],
+    [150,12],[155,2],[160,20],[165,1],[170,12],
+    [180,12],[185,9],[190,12],
+    [220,12],[225,8],[230,12],
+    [240,12],[245,2],[250,20],[255,1],[260,12],
+    [280,12],[300,12]
   ];
-  const jitter = () => (Math.random() - 0.5) * 2;
+  const jitter = () => (Math.random() - 0.5) * 1.5;
   return 'M ' + pts.map(([x,y]) => `${x},${y + jitter()}`).join(' L ');
 }
 
@@ -197,28 +344,35 @@ function reordenarGrid() {
   const grid  = document.getElementById('grid');
   const cards = [...grid.querySelectorAll('.card')];
   cards.sort((a, b) => {
-    const ta = a.classList.contains('ROJO') ? 0 : a.classList.contains('AMARILLO') ? 1 : 2;
-    const tb = b.classList.contains('ROJO') ? 0 : b.classList.contains('AMARILLO') ? 1 : 2;
-    return ta - tb;
+    const rank = c => c.classList.contains('ROJO') ? 0 : c.classList.contains('AMARILLO') ? 1 : 2;
+    return rank(a) - rank(b);
   });
   cards.forEach(c => grid.appendChild(c));
 }
 
 function actualizarContadores() {
   let rojo = 0, amarillo = 0, verde = 0;
-  pacientes.forEach(p => {
-    if      (p.triage === 'ROJO')     rojo++;
-    else if (p.triage === 'AMARILLO') amarillo++;
+  ambulancias.forEach(a => {
+    if      (a.triage === 'ROJO')     rojo++;
+    else if (a.triage === 'AMARILLO') amarillo++;
     else                              verde++;
   });
   document.getElementById('cnt-rojo').textContent     = rojo;
   document.getElementById('cnt-amarillo').textContent = amarillo;
   document.getElementById('cnt-verde').textContent    = verde;
-  document.getElementById('cnt-total').textContent    = pacientes.size;
+  document.getElementById('cnt-total').textContent    = ambulancias.size;
+}
+
+function actualizarTurno() {
+  document.getElementById('t-atendidos').textContent = turnoAtendidos;
+  document.getElementById('t-entregas').textContent  = turnoEntregas;
+  document.getElementById('t-rojos').textContent     = turnoRojos;
+  document.getElementById('t-ekg').textContent       = turnoEKG;
 }
 
 function actualizarLastUpdate(ts) {
-  document.getElementById('last-update').textContent = `Último evento: ${ts}`;
+  const el = document.getElementById('last-update');
+  if (el) el.textContent = `Último evento: ${ts}`;
 }
 
 function ocultarEmptyState() {
@@ -226,13 +380,41 @@ function ocultarEmptyState() {
   if (e) e.remove();
 }
 
-// ── ALERTA ROJO ────────────────────────────────────────
-function mostrarAlertaRojo(uuidCorto) {
-  const banner = document.getElementById('alerta-banner');
-  document.getElementById('alerta-uuid').textContent = `UUID: ${uuidCorto}...`;
+// ── AMBULANCIAS EN ROJO ACTIVAS ───────────────────────
+const ambulanciasRojo = new Set();
+
+function mostrarAlertaRojo(ambId, ts) {
+  ambulanciasRojo.add(ambId);
+  actualizarBannerRojo(ts);
+}
+
+function quitarRojo(ambId) {
+  ambulanciasRojo.delete(ambId);
+  if (ambulanciasRojo.size === 0) {
+    document.getElementById('alerta-banner').classList.remove('visible');
+  } else {
+    actualizarBannerRojo('');
+  }
+}
+
+function actualizarBannerRojo(ts) {
+  const banner   = document.getElementById('alerta-banner');
+  const uuidEl   = document.getElementById('alerta-uuid');
+  const timeEl   = document.getElementById('alerta-time');
+  const lista    = [...ambulanciasRojo]
+    .sort()
+    .map(id => `AMB-${String(id).padStart(2,'0')}`)
+    .join('  ·  ');
+
+  uuidEl.textContent = lista;
+  if (ts) timeEl.textContent = ts;
   banner.classList.add('visible');
+
   clearTimeout(alertaTimeout);
-  alertaTimeout = setTimeout(() => banner.classList.remove('visible'), 6000);
+  alertaTimeout = setTimeout(() => {
+    ambulanciasRojo.clear();
+    banner.classList.remove('visible');
+  }, 8000);
 }
 
 // ── AUDIO ALERT ────────────────────────────────────────
@@ -241,18 +423,18 @@ function reproducirAlerta() {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const now = audioCtx.currentTime;
-    [0, 0.35, 0.7].forEach(offset => {
+    [0, 0.4, 0.8].forEach(offset => {
       const osc  = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.connect(gain);
       gain.connect(audioCtx.destination);
-      osc.frequency.value = 880;
+      osc.frequency.value = 820;
       osc.type = 'sine';
       gain.gain.setValueAtTime(0, now + offset);
-      gain.gain.linearRampToValueAtTime(0.25, now + offset + 0.05);
-      gain.gain.linearRampToValueAtTime(0, now + offset + 0.2);
+      gain.gain.linearRampToValueAtTime(0.2, now + offset + 0.06);
+      gain.gain.linearRampToValueAtTime(0, now + offset + 0.22);
       osc.start(now + offset);
-      osc.stop(now + offset + 0.25);
+      osc.stop(now + offset + 0.3);
     });
   } catch (e) {}
 }
