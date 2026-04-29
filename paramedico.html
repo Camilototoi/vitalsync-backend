@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VitalSync — Tableta Paramédico</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #f0f4f9;
+  --surface:  #ffffff;
+  --surface2: #f5f8fc;
+  --border:   #dde4ef;
+  --blue:     #1a56db;
+  --blue-light:#ebf0fd;
+  --rojo:     #dc2626;
+  --rojo-light:#fef2f2;
+  --rojo-border:#fca5a5;
+  --amarillo: #d97706;
+  --amarillo-light:#fffbeb;
+  --amarillo-border:#fcd34d;
+  --verde:    #059669;
+  --verde-light:#ecfdf5;
+  --verde-border:#6ee7b7;
+  --text:     #0f172a;
+  --text-mid: #334155;
+  --text-muted:#64748b;
+  --text-faint:#94a3b8;
+  --shadow-sm:0 1px 4px rgba(15,23,42,0.08);
+  --shadow-md:0 4px 12px rgba(15,23,42,0.10);
+  --mono: 'DM Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+  --display: 'Sora', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+
+body {
+  background: var(--bg);
+  font-family: var(--sans);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--blue);
+  color: #fff;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-left { display: flex; align-items: center; gap: 10px; }
+
+.header-icon {
+  width: 36px; height: 36px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.header-title {
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.header-sub {
+  font-size: 10px;
+  opacity: 0.7;
+  margin-top: 1px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.conn-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.4);
+}
+
+.conn-dot.online  { background: #34d399; animation: pulse 2s infinite; }
+.conn-dot.offline { background: #f87171; }
+.conn-dot.connecting { background: #fbbf24; animation: blink 0.9s infinite; }
+
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.5); }
+  50%      { box-shadow: 0 0 0 5px rgba(52,211,153,0); }
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+.conn-label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+#clock {
+  font-family: var(--mono);
+  font-size: 13px;
+  opacity: 0.85;
+  letter-spacing: 1px;
+}
+
+/* ── BODY ── */
+.body-wrap {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── AMBULANCIA CARD ── */
+.amb-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.amb-stripe { height: 4px; background: var(--blue); transition: background 0.4s; }
+.amb-stripe.ROJO     { background: var(--rojo); }
+.amb-stripe.AMARILLO { background: var(--amarillo); }
+.amb-stripe.VERDE    { background: var(--verde); }
+
+.amb-body { padding: 16px; }
+
+.amb-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.amb-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); }
+.amb-num   { font-family: var(--display); font-size: 28px; font-weight: 800; color: var(--text); line-height: 1; }
+
+.amb-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+
+.triage-badge {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+  padding: 4px 12px; border-radius: 20px; text-transform: uppercase;
+}
+
+.triage-badge.ROJO     { background: var(--rojo-light);     color: #991b1b; border: 1px solid var(--rojo-border); }
+.triage-badge.AMARILLO { background: var(--amarillo-light);  color: #92400e; border: 1px solid var(--amarillo-border); }
+.triage-badge.VERDE    { background: var(--verde-light);    color: #065f46; border: 1px solid var(--verde-border); }
+.triage-badge.default  { background: var(--surface2);       color: var(--text-muted); border: 1px solid var(--border); }
+
+.paciente-uuid {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  margin-bottom: 12px;
+}
+
+/* ── VITALS ── */
+.vitals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.vital-block {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.vital-block.updated {
+  animation: flash 0.7s ease-out forwards;
+}
+
+@keyframes flash {
+  0%   { background: #ebf0fd; border-color: #93c5fd; }
+  100% { background: var(--surface2); border-color: var(--border); }
+}
+
+.vital-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-faint); margin-bottom: 3px; }
+.vital-value { font-family: var(--mono); font-size: 26px; font-weight: 500; color: var(--text); line-height: 1; }
+.vital-unit  { font-size: 10px; color: var(--text-faint); margin-left: 2px; font-family: var(--sans); }
+
+.vital-value.hr-high { color: var(--rojo); }
+.vital-value.hr-low  { color: var(--amarillo); }
+.vital-value.hr-ok   { color: var(--verde); }
+
+/* ── HEARTBEAT ── */
+.heartbeat-wrap {
+  height: 36px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  padding: 4px 8px;
+  margin-bottom: 12px;
+}
+
+.hb-path { fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ROJO    .hb-path { stroke: var(--rojo); }
+.AMARILLO .hb-path { stroke: var(--amarillo); }
+.VERDE   .hb-path { stroke: var(--verde); }
+
+/* ── SEND INDICATOR ── */
+.send-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: all 0.3s;
+}
+
+.send-indicator.sending {
+  background: var(--blue-light);
+  border-color: #93c5fd;
+  color: var(--blue);
+}
+
+.send-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.send-indicator.sending .send-dot {
+  background: var(--blue);
+  animation: pulse-send 0.8s ease-out;
+}
+
+@keyframes pulse-send {
+  0%   { box-shadow: 0 0 0 0 rgba(26,86,219,0.5); }
+  100% { box-shadow: 0 0 0 8px rgba(26,86,219,0); }
+}
+
+/* ── EKG BADGE ── */
+.ekg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ekg-badge.tiene { background: var(--verde-light); color: #065f46; border: 1px solid var(--verde-border); }
+.ekg-badge.none  { background: var(--surface2);    color: var(--text-faint); border: 1px solid var(--border); }
+
+/* ── LOG CARD ── */
+.log-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.log-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.log-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.log-body {
+  padding: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.log-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  animation: log-enter 0.2s ease-out;
+}
+
+@keyframes log-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.log-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.log-dot.ok     { background: var(--verde); }
+.log-dot.rojo   { background: var(--rojo); }
+.log-dot.azul   { background: var(--blue); }
+.log-dot.gris   { background: var(--text-faint); }
+
+.log-msg  { font-size: 11px; color: var(--text-mid); font-weight: 500; line-height: 1.35; }
+.log-time { font-family: var(--mono); font-size: 9px; color: var(--text-faint); margin-top: 1px; }
+
+/* ── WAITING STATE ── */
+.waiting {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-faint);
+}
+
+.waiting-icon {
+  width: 48px; height: 48px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px;
+}
+
+.waiting-title { font-family: var(--display); font-size: 14px; font-weight: 600; color: var(--text-mid); margin-bottom: 4px; }
+.waiting-sub   { font-size: 12px; color: var(--text-faint); }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="header-left">
+    <div class="header-icon">
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="2" stroke-linecap="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </svg>
+    </div>
+    <div>
+      <div class="header-title">VitalSync · Tableta Paramédico</div>
+      <div class="header-sub">Ambulancia 01 — Transmisión en vivo</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="conn-dot connecting" id="conn-dot"></div>
+    <span class="conn-label" id="conn-label">CONECTANDO</span>
+    <span id="clock">--:--:--</span>
+  </div>
+</header>
+
+<!-- BODY -->
+<div class="body-wrap">
+
+  <!-- Waiting state inicial -->
+  <div id="waiting">
+    <div class="waiting-icon">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="waiting-title">Esperando señal...</div>
+    <div class="waiting-sub">Conectando con la Ambulancia 01</div>
+  </div>
+
+  <!-- Card principal (oculta hasta recibir datos) -->
+  <div class="amb-card" id="main-card" style="display:none;">
+    <div class="amb-stripe" id="amb-stripe"></div>
+    <div class="amb-body">
+      <div class="amb-top">
+        <div>
+          <div class="amb-label">Ambulancia</div>
+          <div class="amb-num">01</div>
+        </div>
+        <div class="amb-right">
+          <div class="triage-badge default" id="triage-badge">—</div>
+          <div class="ekg-badge none" id="ekg-badge">Sin EKG</div>
+        </div>
+      </div>
+      <div class="paciente-uuid" id="paciente-uuid">Esperando paciente...</div>
+      <div class="vitals">
+        <div class="vital-block" id="block-fc">
+          <div class="vital-label">Frec. Cardíaca</div>
+          <div class="vital-value" id="val-fc">—<span class="vital-unit">bpm</span></div>
+        </div>
+        <div class="vital-block" id="block-pa">
+          <div class="vital-label">Presión Arterial</div>
+          <div class="vital-value" id="val-pa">—<span class="vital-unit">mmHg</span></div>
+        </div>
+      </div>
+      <div class="heartbeat-wrap" id="heartbeat-wrap">
+        <svg width="100%" height="100%" viewBox="0 0 300 28" preserveAspectRatio="none">
+          <path class="hb-path" id="hb-path" d="" stroke="#94a3b8"/>
+        </svg>
+      </div>
+      <div class="send-indicator" id="send-indicator">
+        <div class="send-dot"></div>
+        <span id="send-text">En espera de datos...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log de transmisiones -->
+  <div class="log-card" id="log-card" style="display:none;">
+    <div class="log-header">
+      Registro de transmisiones
+      <span class="log-count" id="log-count">0 pulsos enviados</span>
+    </div>
+    <div class="log-body" id="log-body"></div>
+  </div>
+
+</div>
+
+<script>
+const AMBULANCIA_ID = 1;
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL   = `${protocol}//${window.location.host}/ws/vitales`;
+
+let ws           = null;
+let pulsoCount   = 0;
+let sendTimeout  = null;
+let triageActual = '';
+
+function conectar() {
+  setConn('connecting');
+  ws = new WebSocket(WS_URL);
+  ws.onopen  = () => setConn('online');
+  ws.onclose = () => { setConn('offline'); setTimeout(conectar, 3000); };
+  ws.onerror = () => { setConn('offline'); ws.close(); };
+  ws.onmessage = (e) => {
+    try {
+      const datos = JSON.parse(e.data);
+      if (datos.ambulancia_id === AMBULANCIA_ID) procesarDatos(datos);
+    } catch {}
+  };
+}
+
+function setConn(estado) {
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  dot.className = `conn-dot ${estado}`;
+  const textos = { online: 'EN LÍNEA', offline: 'SIN SEÑAL', connecting: 'CONECTANDO' };
+  label.textContent = textos[estado] || estado;
+}
+
+function procesarDatos(datos) {
+  const triage   = normalizarTriage(datos.triage || 'VERDE');
+  const fc       = datos.frecuencia_cardiaca ?? '--';
+  const pa       = datos.presion_arterial    ?? '--';
+  const uuid     = datos.paciente_uuid       ?? '';
+  const tieneEKG = !!datos.imagen_ekg;
+  const ts       = new Date().toLocaleTimeString('es-CO', { hour12: false });
+
+  triageActual = triage;
+  pulsoCount++;
+
+  // Mostrar card y log
+  document.getElementById('waiting').style.display   = 'none';
+  document.getElementById('main-card').style.display = 'block';
+  document.getElementById('log-card').style.display  = 'block';
+
+  // Stripe y heartbeat triage
+  const stripe = document.getElementById('amb-stripe');
+  stripe.className = `amb-stripe ${triage}`;
+
+  const hw = document.getElementById('heartbeat-wrap');
+  hw.className = `heartbeat-wrap ${triage}`;
+
+  // Triage badge
+  const badge = document.getElementById('triage-badge');
+  badge.className   = `triage-badge ${triage}`;
+  badge.textContent = triage;
+
+  // EKG badge
+  const ekgBadge = document.getElementById('ekg-badge');
+  if (tieneEKG) {
+    ekgBadge.className   = 'ekg-badge tiene';
+    ekgBadge.textContent = '📎 EKG adjunto';
+  } else {
+    ekgBadge.className   = 'ekg-badge none';
+    ekgBadge.textContent = 'Sin EKG';
+  }
+
+  // UUID paciente
+  document.getElementById('paciente-uuid').textContent =
+    uuid ? `Paciente: ${uuid.substring(0, 16)}...` : '';
+
+  // FC
+  const fcEl    = document.getElementById('val-fc');
+  const hrClass = getHRClass(fc);
+  fcEl.innerHTML = `${fc}<span class="vital-unit">bpm</span>`;
+  fcEl.className = `vital-value ${hrClass}`;
+  flashBlock('block-fc');
+
+  // PA
+  document.getElementById('val-pa').innerHTML = `${pa}<span class="vital-unit">mmHg</span>`;
+  flashBlock('block-pa');
+
+  // Heartbeat
+  document.getElementById('hb-path').setAttribute('d', generarECG());
+
+  // Send indicator
+  const ind  = document.getElementById('send-indicator');
+  const txt  = document.getElementById('send-text');
+  ind.className = 'send-indicator sending';
+  txt.textContent = tieneEKG
+    ? `Enviando datos + EKG al hospital... (${(100000/1024).toFixed(0)} KB)`
+    : 'Enviando signos vitales al hospital...';
+
+  clearTimeout(sendTimeout);
+  sendTimeout = setTimeout(() => {
+    ind.className   = 'send-indicator';
+    txt.textContent = 'Datos transmitidos ✓ — próximo pulso en 10s';
+  }, 2000);
+
+  // Log
+  agregarLog(triage, fc, pa, tieneEKG, ts);
+
+  // Contador
+  document.getElementById('log-count').textContent =
+    `${pulsoCount} pulso${pulsoCount !== 1 ? 's' : ''} enviado${pulsoCount !== 1 ? 's' : ''}`;
+}
+
+function agregarLog(triage, fc, pa, tieneEKG, ts) {
+  const body = document.getElementById('log-body');
+  const color = triage === 'ROJO' ? 'rojo' : triage === 'AMARILLO' ? 'azul' : 'ok';
+  const ekg   = tieneEKG ? ' · EKG ✓' : '';
+
+  const item = document.createElement('div');
+  item.className = 'log-item';
+  item.innerHTML = `
+    <div class="log-dot ${color}"></div>
+    <div>
+      <div class="log-msg">FC: ${fc} bpm · PA: ${pa} mmHg · ${triage}${ekg}</div>
+      <div class="log-time">${ts}</div>
+    </div>
+  `;
+  body.insertBefore(item, body.firstChild);
+  while (body.children.length > 20) body.removeChild(body.lastChild);
+}
+
+function normalizarTriage(t) {
+  const s = String(t).toUpperCase();
+  if (s.includes('ROJO'))     return 'ROJO';
+  if (s.includes('AMARILLO')) return 'AMARILLO';
+  return 'VERDE';
+}
+
+function getHRClass(fc) {
+  const v = parseInt(fc);
+  if (isNaN(v)) return '';
+  if (v > 100)  return 'hr-high';
+  if (v < 60)   return 'hr-low';
+  return 'hr-ok';
+}
+
+function flashBlock(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('updated');
+  void el.offsetWidth;
+  el.classList.add('updated');
+}
+
+function generarECG() {
+  const pts = [
+    [0,14],[30,14],[40,14],[45,10],[50,14],
+    [60,14],[65,3],[70,23],[75,1],[80,14],
+    [90,14],[95,11],[100,14],
+    [130,14],[135,10],[140,14],
+    [150,14],[155,3],[160,23],[165,1],[170,14],
+    [180,14],[185,11],[190,14],
+    [220,14],[225,10],[230,14],
+    [240,14],[245,3],[250,23],[255,1],[260,14],
+    [280,14],[300,14]
+  ];
+  const jitter = () => (Math.random() - 0.5) * 1.5;
+  return 'M ' + pts.map(([x,y]) => `${x},${y+jitter()}`).join(' L ');
+}
+
+function actualizarReloj() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('es-CO', { hour12: false });
+}
+setInterval(actualizarReloj, 1000);
+actualizarReloj();
+
+conectar();
+</script>
+</body>
+</html>

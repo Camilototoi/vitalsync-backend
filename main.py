@@ -1,5 +1,6 @@
 import asyncio
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from dotenv import load_dotenv
@@ -23,12 +24,10 @@ def registrar_handlers():
 # ── LIFESPAN (startup / shutdown) ─────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     registrar_handlers()
     asyncio.create_task(rate_limiter_his.procesar())
     print("[VitalSync] Sistema iniciado ✅")
     yield
-    # Shutdown
     print("[VitalSync] Sistema detenido")
 
 # ── APP ───────────────────────────────────────────
@@ -40,8 +39,13 @@ app = FastAPI(
 
 app.include_router(ingesta_router, prefix="/api/ingesta", tags=["Ingesta"])
 app.include_router(dashboard_router, prefix="/ws",        tags=["Dashboard"])
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 @app.get("/health", tags=["Sistema"])
 def health():
     return {"status": "ok", "service": "vitalsync"}
+
+@app.get("/paramedico", tags=["Frontend"])
+def paramedico():
+    return FileResponse("paramedico.html")
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
